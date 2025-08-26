@@ -272,6 +272,14 @@ if uploaded_file:
     sheet = st.selectbox("Select Sheet", xls.sheet_names)
     df = pd.read_excel(uploaded_file, sheet_name=sheet)
 
+    # Handle datetime formatting dynamically
+    for col in df.select_dtypes(include=["datetime64[ns]", "datetime64[ns, UTC]"]).columns:
+        # Check if all times are midnight (00:00:00)
+        if (df[col].dt.time == pd.to_datetime("00:00:00").time()).all():
+            df[col] = df[col].dt.date  # only date
+        else:
+            df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")  # keep full datetime
+
     # ---------------- DATA PREVIEW ----------------
     # st.subheader("🔍 Data Preview")
     # if len(df) > 200:
