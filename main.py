@@ -273,12 +273,85 @@ if uploaded_file:
     df = pd.read_excel(uploaded_file, sheet_name=sheet)
 
     # ---------------- DATA PREVIEW ----------------
+    # st.subheader("🔍 Data Preview")
+    # if len(df) > 200:
+    #     st.dataframe(df.head(200), use_container_width=True)
+    #     st.info(f"Showing first 200 rows out of {len(df):,}")
+    # else:
+    #     st.dataframe(df, use_container_width=True)
+
+
+    # ---------------- DATA PREVIEW ----------------
     st.subheader("🔍 Data Preview")
-    if len(df) > 200:
-        st.dataframe(df.head(200), use_container_width=True)
-        st.info(f"Showing first 200 rows out of {len(df):,}")
+    # --- make a stable original row number (once per dataset) ---
+    fingerprint = (tuple(df.columns), len(df))
+    if "orig_row_fp" not in st.session_state or st.session_state.orig_row_fp != fingerprint:
+        st.session_state.orig_row_fp = fingerprint
+        # 1-based original positions aligned to current df.index
+        st.session_state.orig_row = pd.Series(
+            range(1, len(df) + 1), index=df.index, name="Row #"
+        )
+
+    # local copy with "Row #" as a real column (don’t mutate your main df)
+    display_df = df.copy()
+    if "Row #" not in display_df.columns:
+        # align by index to survive prior filters/reindexing
+        display_df.insert(0, "Row #", st.session_state.orig_row.reindex(display_df.index))
+
+    # --- pagination controls ---
+    rows_per_page = st.selectbox("Rows per page", [50, 100, 200, 500], index=2)
+    total_rows = len(display_df)
+
+    if total_rows > rows_per_page:
+        total_pages = (total_rows - 1) // rows_per_page + 1
+
+        if "page" not in st.session_state:
+            st.session_state.page = 1
+        if "prev_rpp" not in st.session_state:
+            st.session_state.prev_rpp = rows_per_page
+        if st.session_state.prev_rpp != rows_per_page:
+            st.session_state.page = 1
+            st.session_state.prev_rpp = rows_per_page
+
+        c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
+        with c1:
+            if st.button("⬅️ Previous") and st.session_state.page > 1:
+                st.session_state.page -= 1
+        with c4:
+            if st.button("Next ➡️") and st.session_state.page < total_pages:
+                st.session_state.page += 1
+        with c2:
+            st.markdown(
+                f"<p style='text-align:center;'>Page {st.session_state.page} of {total_pages}</p>",
+                unsafe_allow_html=True
+            )
+        with c3:
+            jump = st.number_input(
+                "Jump to page",
+                min_value=1,
+                max_value=total_pages,
+                value=st.session_state.page,
+                step=1,
+                key="jump_page"
+            )
+            if jump != st.session_state.page:
+                st.session_state.page = jump
+
+        start = (st.session_state.page - 1) * rows_per_page
+        end = start + rows_per_page
+
+        # set the visible index to the original row numbers
+        page_df = display_df.iloc[start:end].set_index("Row #")
+        st.dataframe(page_df, use_container_width=True)
+
+        # info bar shows true original positions based on the visible index
+        shown_min = int(page_df.index.min()) if not page_df.empty else 0
+        shown_max = int(page_df.index.max()) if not page_df.empty else 0
+        st.info(f"Showing rows {shown_min} to {shown_max} of {total_rows:,}")
     else:
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(display_df.set_index("Row #"), use_container_width=True)
+        st.success(f"Showing all {total_rows:,} rows")
+
 
     # ---------------- METRICS ----------------
     col1, col2, col3 = st.columns(3)
